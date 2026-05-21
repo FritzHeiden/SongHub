@@ -58,6 +58,25 @@ export interface Tab {
   }
 }
 
+export interface TabWriteRequiredFields {
+  artist: string
+  name: string
+  type: string
+  url: string
+}
+
+export type TabWritePayload = TabWriteRequiredFields & Partial<Tab>
+
+export interface SavedTabDocument {
+  savedAt: string
+  version: string
+  marks: {
+    A: boolean
+    F: boolean
+  }
+  tab: TabWritePayload
+}
+
 export interface TabScrapped {
   marketing_type: string
   tab_url: string

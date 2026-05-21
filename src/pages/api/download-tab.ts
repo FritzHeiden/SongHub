@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
+import { sanitizeSavedFilenameToken } from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -12,7 +13,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     return res.status(400).json({ error: 'filename required' })
   }
 
-  const filepath = path.join(SAVED_DIR, path.basename(filename))
+  const safeFilename = sanitizeSavedFilenameToken(filename)
+  const filepath = path.join(SAVED_DIR, safeFilename)
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'File not found' })
   }
@@ -23,7 +25,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   // Copy metadata into tab object so it's available in the UI
   if (parsed.tab) {
     if (parsed.savedAt) parsed.tab.savedAt = parsed.savedAt
-    parsed.tab.savedFilename = path.basename(filename)
+    parsed.tab.savedFilename = safeFilename
     parsed.tab.marks = {
       A: Boolean(parsed?.marks?.A),
       F: Boolean(parsed?.marks?.F),

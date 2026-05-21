@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
+import { SAVED_TAB_FILE_SUFFIX } from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -12,7 +13,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   if (!fs.existsSync(SAVED_DIR)) return res.status(404).json({ tab: null })
 
-  const files = fs.readdirSync(SAVED_DIR).filter((f) => f.endsWith('.ultimatetab.json'))
+  const files = fs.readdirSync(SAVED_DIR).filter((f) => f.endsWith(SAVED_TAB_FILE_SUFFIX))
   for (const file of files) {
     try {
       const raw = fs.readFileSync(path.join(SAVED_DIR, file), 'utf-8')

@@ -3,6 +3,11 @@ import fs from 'fs'
 import path from 'path'
 import { getAuthFromRequest } from '../../lib/auth'
 import { getClientIp } from '../../lib/audit'
+import {
+  buildSavedTabFilename,
+  normalizeRenamePayload,
+  sanitizeSavedFilenameToken,
+} from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -14,12 +19,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { filename, artist, name } = req.body
-  if (!filename || !artist || !name) {
-    return res.status(400).json({ error: 'filename, artist und name erforderlich' })
+  const validated = normalizeRenamePayload(req.body)
+  if (!validated.ok) {
+    const message = 'error' in validated ? validated.error : 'Invalid payload'
+    return res.status(400).json({ error: message })
   }
+  const { filename, artist, name } = validated.value
 
-  const filepath = path.join(SAVED_DIR, path.basename(filename))
+  const filepath = path.join(SAVED_DIR, filename)
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Datei nicht gefunden' })
 
   const raw = fs.readFileSync(filepath, 'utf-8')
@@ -30,12 +37,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   parsed.tab.name = name
 
   // Build new filename
-  const newFilename = `${artist} - ${name} (${parsed.tab.type || 'Chords'})`
-    .replace(/[/\\?%*:|"<>]/g, '-').trim() + '.ultimatetab.json'
+  const newFilename = buildSavedTabFilename(artist, name, parsed.tab.type || 'Chords')
   const newFilepath = path.join(SAVED_DIR, newFilename)
 
   fs.writeFileSync(newFilepath, JSON.stringify(parsed, null, 2))
-  if (newFilename !== path.basename(filename)) {
+  if (newFilename !== sanitizeSavedFilenameToken(filename)) {
     fs.unlinkSync(filepath)
   }
 

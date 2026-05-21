@@ -3,6 +3,10 @@ import fs from 'fs'
 import path from 'path'
 import { getAuthFromRequest } from '../../lib/auth'
 import { appendChangeLog, getClientIp } from '../../lib/audit'
+import {
+  buildSavedTabDocument,
+  buildSavedTabFilename,
+} from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -57,26 +61,14 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     raw_tabs: '',
   }
 
-  const filename =
-    `${artist} - ${name} (${type})`
-      .replace(/[/\\?%*:|"<>]/g, '-')
-      .trim() + '.ultimatetab.json'
+  const filename = buildSavedTabFilename(artist, name, type)
 
   const filepath = path.join(SAVED_DIR, filename)
   const existedBefore = fs.existsSync(filepath)
 
   fs.writeFileSync(
     filepath,
-    JSON.stringify(
-      {
-        savedAt: new Date().toISOString(),
-        version: '1.0',
-        marks: { A: false, F: false },
-        tab,
-      },
-      null,
-      2,
-    ),
+    JSON.stringify(buildSavedTabDocument(tab), null, 2),
   )
 
   // Nur echte Neuanlagen im Change-Log erfassen.

@@ -3,6 +3,13 @@ import fs from 'fs'
 import path from 'path'
 import { getAuthFromRequest } from '../../lib/auth'
 import { appendChangeLog, getClientIp, moveSongToTrash } from '../../lib/audit'
+import {
+  buildSavedTabDocument,
+  buildSavedTabFilename,
+  normalizeTabForCreate,
+  SAVED_TAB_FILE_SUFFIX,
+  sanitizeSavedFilenameToken,
+} from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -19,28 +26,24 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'POST') {
     // Save tab to server
     const { tab } = req.body
-    if (!tab || !tab.url || !tab.htmlTab) {
-      return res.status(400).json({ error: 'Invalid tab data' })
+    const validated = normalizeTabForCreate(tab)
+    if (!validated.ok) {
+      const message = 'error' in validated ? validated.error : 'Invalid tab data'
+      return res.status(400).json({ error: message })
     }
-    const filename = `${tab.artist} - ${tab.name} (${tab.type})`
-      .replace(/[/\\?%*:|"<>]/g, '-')
-      .trim() + '.ultimatetab.json'
+    const normalizedTab = validated.value
+    const filename = buildSavedTabFilename(
+      normalizedTab.artist,
+      normalizedTab.name,
+      normalizedTab.type,
+    )
 
     const filepath = path.join(SAVED_DIR, filename)
     const existedBefore = fs.existsSync(filepath)
 
     fs.writeFileSync(
       filepath,
-      JSON.stringify(
-        {
-          savedAt: new Date().toISOString(),
-          version: '1.0',
-          marks: { A: false, F: false },
-          tab,
-        },
-        null,
-        2,
-      ),
+      JSON.stringify(buildSavedTabDocument(normalizedTab), null, 2),
     )
 
     // Nur echte Neuanlagen im Change-Log erfassen.
@@ -53,9 +56,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         action: 'song_created',
         details: {
           filename,
-          artist: tab.artist,
-          name: tab.name,
-          type: tab.type,
+          artist: normalizedTab.artist,
+          name: normalizedTab.name,
+          type: normalizedTab.type,
           source: 'ultimate-guitar',
         },
       })
@@ -65,7 +68,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   } else if (req.method === 'GET') {
     // List all saved tabs
-    const files = fs.readdirSync(SAVED_DIR).filter(f => f.endsWith('.ultimatetab.json'))
+    const files = fs.readdirSync(SAVED_DIR).filter(f => f.endsWith(SAVED_TAB_FILE_SUFFIX))
     const tabs = files.map(filename => {
       try {
         const raw = fs.readFileSync(path.join(SAVED_DIR, filename), 'utf-8')
@@ -94,11 +97,12 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     if (!filename || typeof filename !== 'string') {
       return res.status(400).json({ error: 'filename required' })
     }
-    const filepath = path.join(SAVED_DIR, path.basename(filename))
+    const safeFilename = sanitizeSavedFilenameToken(filename)
+    const filepath = path.join(SAVED_DIR, safeFilename)
     if (fs.existsSync(filepath)) {
       const trashEntry = moveSongToTrash({
         filePath: filepath,
-        originalFilename: path.basename(filename),
+        originalFilename: safeFilename,
         deletedBy: actor,
         deletedByRole: role,
         ip,
@@ -111,7 +115,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         ip,
         action: 'song_deleted',
         details: {
-          filename: path.basename(filename),
+          filename: safeFilename,
           trashId: trashEntry.id,
         },
       })

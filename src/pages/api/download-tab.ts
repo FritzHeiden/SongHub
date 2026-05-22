@@ -1,22 +1,28 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { sanitizeSavedFilenameToken } from '../../lib/tab-contract'
+import {
+  buildSavedTabId,
+  resolveSavedTabFilename,
+} from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') return res.status(405).end()
-
-  const { filename } = req.query
-  if (!filename || typeof filename !== 'string') {
-    return res.status(400).json({ error: 'filename required' })
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' })
   }
 
-  const safeFilename = sanitizeSavedFilenameToken(filename)
+  const resolvedFilename = resolveSavedTabFilename(req.query)
+  if (!resolvedFilename.ok) {
+    const message = 'error' in resolvedFilename ? resolvedFilename.error : 'filename required'
+    return res.status(400).json({ error: message, code: 'INVALID_IDENTIFIER' })
+  }
+
+  const safeFilename = resolvedFilename.value
   const filepath = path.join(SAVED_DIR, safeFilename)
   if (!fs.existsSync(filepath)) {
-    return res.status(404).json({ error: 'File not found' })
+    return res.status(404).json({ error: 'File not found', code: 'NOT_FOUND' })
   }
 
   const content = fs.readFileSync(filepath, 'utf-8')
@@ -26,6 +32,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (parsed.tab) {
     if (parsed.savedAt) parsed.tab.savedAt = parsed.savedAt
     parsed.tab.savedFilename = safeFilename
+    parsed.tab.savedId = buildSavedTabId(safeFilename)
     parsed.tab.marks = {
       A: Boolean(parsed?.marks?.A),
       F: Boolean(parsed?.marks?.F),

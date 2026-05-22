@@ -52,6 +52,7 @@ export interface Tab {
   chordsDiagrams?: UGChordCollection[]
   savedAt?: string
   savedFilename?: string
+  savedId?: string
   marks?: {
     A?: boolean
     F?: boolean

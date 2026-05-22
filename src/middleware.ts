@@ -40,8 +40,7 @@ export function middleware(req: NextRequest) {
   }
 
   if (!isAuthed) {
-    // Return API-friendly error for admin API calls
-    if (pathname.startsWith('/api/admin')) {
+    if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

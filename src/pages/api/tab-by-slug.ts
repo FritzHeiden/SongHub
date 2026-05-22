@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { SAVED_TAB_FILE_SUFFIX } from '../../lib/tab-contract'
+import { buildSavedTabId, SAVED_TAB_FILE_SUFFIX } from '../../lib/tab-contract'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -26,7 +26,18 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         tab.url === `local://image-tab/${slugStr}` ||
         tab.slug === `image-tab/${slugStr}`
       ) {
-        return res.status(200).json({ tab })
+        return res.status(200).json({
+          tab: {
+            ...tab,
+            savedAt: parsed.savedAt,
+            savedFilename: file,
+            savedId: buildSavedTabId(file),
+            marks: {
+              A: Boolean(parsed?.marks?.A),
+              F: Boolean(parsed?.marks?.F),
+            },
+          },
+        })
       }
     } catch {}
   }

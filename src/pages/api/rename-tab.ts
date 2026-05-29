@@ -28,11 +28,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Datei nicht gefunden' })
 
   const song = await findSongByFilename(path.basename(filename))
-  if (!song || !canModifySong(song, {
+  if (!song || !(await canModifySong(song, {
     userId: auth.userId,
     username: auth.username,
     role: auth.role,
-  })) {
+  }))) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 

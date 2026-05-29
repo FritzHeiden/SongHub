@@ -4,7 +4,6 @@ import path from 'path'
 import { getAuthFromRequestAsync } from '../../lib/auth'
 import { appendChangeLog, getClientIp, moveSongToTrash } from '../../lib/audit'
 import {
-  canAccessSong,
   canModifySong,
   findSongByFilename,
   listAccessibleSongs,
@@ -123,11 +122,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const filepath = path.join(SAVED_DIR, path.basename(filename))
     if (fs.existsSync(filepath)) {
       const song = await findSongByFilename(path.basename(filename))
-      if (!song || !canModifySong(song, {
+      if (!song || !(await canModifySong(song, {
         userId: auth.userId,
         username: auth.username,
         role: auth.role,
-      })) {
+      }))) {
         return res.status(403).json({ error: 'Forbidden' })
       }
 

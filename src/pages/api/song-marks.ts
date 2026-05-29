@@ -30,11 +30,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
 
     const song = await findSongByFilename(path.basename(filename))
-    if (!song || !canModifySong(song, {
+    if (!song || !(await canModifySong(song, {
       userId: auth.userId,
       username: auth.username,
       role: auth.role,
-    })) {
+    }))) {
       return res.status(403).json({ error: 'Forbidden' })
     }
 

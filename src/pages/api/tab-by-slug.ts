@@ -33,11 +33,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         tab.slug === `image-tab/${slugStr}`
       ) {
         const song = await findSongByFilename(file)
-        if (!song || !canAccessSong(song, {
+        if (!song || !(await canAccessSong(song, {
           userId: auth.userId,
           username: auth.username,
           role: auth.role,
-        })) {
+        }))) {
           return res.status(403).json({ error: 'Forbidden' })
         }
 

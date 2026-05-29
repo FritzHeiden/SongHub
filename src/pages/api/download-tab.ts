@@ -25,11 +25,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const song = await findSongByFilename(path.basename(filename))
-  if (!song || !canAccessSong(song, {
+  if (!song || !(await canAccessSong(song, {
     userId: auth.userId,
     username: auth.username,
     role: auth.role,
-  })) {
+  }))) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 

@@ -50,6 +50,8 @@ interface SavedTabMeta {
   error?: boolean
 }
 
+type OwnershipFilter = 'all' | 'private' | 'group' | 'shared'
+
 export default function Home(): JSX.Element {
   const router = useRouter()
   const toast = useToast()
@@ -58,8 +60,10 @@ export default function Home(): JSX.Element {
   const [savedTabs, setSavedTabs] = useState<SavedTabMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>('all')
   const [tabIndex, setTabIndex] = useState(0)
   const [musicianMarkingEnabled, setMusicianMarkingEnabled] = useState(false)
+  const [currentUsername, setCurrentUsername] = useState('')
   
   // Restore tab from sessionStorage on mount
   useEffect(() => {
@@ -95,6 +99,13 @@ export default function Home(): JSX.Element {
       .then((r) => r.json())
       .then((data) => setMusicianMarkingEnabled(Boolean(data?.musicianMarkingEnabled)))
       .catch(() => setMusicianMarkingEnabled(false))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((data) => setCurrentUsername(data?.authenticated ? data?.username || '' : ''))
+      .catch(() => setCurrentUsername(''))
   }, [])
 
   // Listen for tab-saved events (from ImageTabUploader)
@@ -223,10 +234,67 @@ export default function Home(): JSX.Element {
                   />
                 </InputGroup>
 
+                <Flex mb={3} gap={2} flexWrap="wrap">
+                  <Button
+                    size="sm"
+                    variant={ownershipFilter === 'all' ? 'solid' : 'outline'}
+                    colorScheme="blue"
+                    onClick={() => setOwnershipFilter('all')}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={ownershipFilter === 'private' ? 'solid' : 'outline'}
+                    colorScheme="blue"
+                    onClick={() => setOwnershipFilter('private')}
+                  >
+                    Private
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={ownershipFilter === 'group' ? 'solid' : 'outline'}
+                    colorScheme="purple"
+                    onClick={() => setOwnershipFilter('group')}
+                  >
+                    Group
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={ownershipFilter === 'shared' ? 'solid' : 'outline'}
+                    colorScheme="teal"
+                    onClick={() => setOwnershipFilter('shared')}
+                  >
+                    Shared
+                  </Button>
+                </Flex>
+
                 {loading ? (
                   <Flex justify="center" mt={10}><Spinner /></Flex>
                 ) : (() => {
                   const q = searchQuery.toLowerCase()
+                  const byOwnership = (tab: SavedTabMeta): boolean => {
+                    if (ownershipFilter === 'all') return true
+
+                    const ctx = tab.songContext
+                    if (!ctx) return ownershipFilter === 'private'
+
+                    const isGroupOwned = ctx.ownershipMode === 'group'
+                    const isPrivateOwned =
+                      ctx.ownershipMode === 'user' &&
+                      currentUsername.length > 0 &&
+                      tab.songContext?.userPermission === 'owner'
+                    const isShared =
+                      ctx.ownershipMode === 'user' &&
+                      ctx.userPermission !== 'none' &&
+                      ctx.userPermission !== 'owner'
+
+                    if (ownershipFilter === 'group') return isGroupOwned
+                    if (ownershipFilter === 'private') return isPrivateOwned
+                    if (ownershipFilter === 'shared') return isShared
+                    return true
+                  }
+
                   const filtered = savedTabs
                     .filter(tab =>
                       !q ||
@@ -234,6 +302,7 @@ export default function Home(): JSX.Element {
                       tab.name?.toLowerCase().includes(q) ||
                       tab.type?.toLowerCase().includes(q)
                     )
+                    .filter(byOwnership)
                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'))
                   if (filtered.length === 0) return (
                     <Box textAlign="center" mt={10} color="gray.400">

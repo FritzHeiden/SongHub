@@ -8,7 +8,8 @@
     "start": "next start",
     "format": "prettier --check --ignore-path .gitignore .",
     "format:fix": "prettier --write --ignore-path .gitignore .",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:acl": "tsc -p tsconfig.scripts.json && node .tmp/scripts-build/scripts/acl-matrix-check.js"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",

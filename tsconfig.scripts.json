@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".tmp/scripts-build",
+    "module": "commonjs",
+    "target": "ES2020",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "incremental": false
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "src/lib/db.ts",
+    "src/lib/paths.ts",
+    "src/lib/users.ts",
+    "src/lib/groups.ts",
+    "src/lib/songs.ts"
+  ],
+  "exclude": ["node_modules"]
+}

@@ -96,6 +96,15 @@ export default function Nav({
                   <TabImporter />
                   <ImageTabUploader isOpen={isUploaderOpen} onClose={onUploaderClose} asMenuItem onMenuItemClick={onUploaderOpen} />
                   <ImageTabUploader isOpen={isCameraOpen} onClose={onCameraClose} cameraMode asCameraMenuItem onCameraMenuItemClick={onCameraOpen} />
+                  <Button
+                    as={NextLink}
+                    href="/collaboration"
+                    size="sm"
+                    variant="ghost"
+                    m={2}
+                  >
+                    Collaboration
+                  </Button>
                   {isAdmin && (
                     <Button
                       as={NextLink}

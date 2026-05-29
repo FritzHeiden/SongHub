@@ -30,6 +30,8 @@
     "react-spotify-web-playback": "^0.13.4",
     "sanitize-html": "^2.14.0",
     "sass": "^1.85.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1",
     "vexchords": "^1.2.0"
   },
   "devDependencies": {

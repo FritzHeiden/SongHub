@@ -1,10 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
+import { getAuthFromRequestAsync } from '../../lib/auth'
+import { canAccessSong, findSongByFilename } from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || !auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
   const { slug } = req.query
   if (!slug) return res.status(400).json({ error: 'slug erforderlich' })
 
@@ -25,6 +32,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
         tab.url === `local://image-tab/${slugStr}` ||
         tab.slug === `image-tab/${slugStr}`
       ) {
+        const song = await findSongByFilename(file)
+        if (!song || !canAccessSong(song, {
+          userId: auth.userId,
+          username: auth.username,
+          role: auth.role,
+        })) {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
+
         return res.status(200).json({ tab })
       }
     } catch {}

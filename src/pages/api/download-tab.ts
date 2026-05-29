@@ -1,11 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
+import { getAuthFromRequestAsync } from '../../lib/auth'
+import { canAccessSong, findSongByFilename } from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') return res.status(405).end()
+
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || !auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
   const { filename } = req.query
   if (!filename || typeof filename !== 'string') {
@@ -15,6 +22,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const filepath = path.join(SAVED_DIR, path.basename(filename))
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'File not found' })
+  }
+
+  const song = await findSongByFilename(path.basename(filename))
+  if (!song || !canAccessSong(song, {
+    userId: auth.userId,
+    username: auth.username,
+    role: auth.role,
+  })) {
+    return res.status(403).json({ error: 'Forbidden' })
   }
 
   const content = fs.readFileSync(filepath, 'utf-8')

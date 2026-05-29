@@ -1,8 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { getAuthFromRequest } from '../../lib/auth'
+import { getAuthFromRequestAsync } from '../../lib/auth'
 import { appendChangeLog, getClientIp } from '../../lib/audit'
+import { upsertSongOwnership } from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -18,8 +19,12 @@ export const config = {
   },
 }
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const auth = getAuthFromRequest(req)
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || !auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
   const actor = auth.username || 'unknown'
   const role = auth.role
   const ip = getClientIp(req)
@@ -78,6 +83,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       2,
     ),
   )
+
+  await upsertSongOwnership(filename, auth.userId)
 
   // Nur echte Neuanlagen im Change-Log erfassen.
   if (!existedBefore) {

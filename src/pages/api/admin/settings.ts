@@ -1,12 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { isAdminRequest } from '../../../lib/auth'
+import { getAuthFromRequestAsync } from '../../../lib/auth'
 import {
   getMusicianMarkingEnabled,
   setMusicianMarkingEnabled,
 } from '../../../lib/settings'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (!isAdminRequest(req)) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || auth.role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden' })
   }
 

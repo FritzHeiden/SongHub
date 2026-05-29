@@ -1,13 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { getAuthFromRequest } from '../../lib/auth'
+import { getAuthFromRequestAsync } from '../../lib/auth'
 import { getClientIp } from '../../lib/audit'
+import { canModifySong, findSongByFilename, upsertSongOwnership } from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const auth = getAuthFromRequest(req)
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || !auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
   const actor = auth.username || 'unknown'
   const role = auth.role
   const ip = getClientIp(req)
@@ -21,6 +26,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
 
   const filepath = path.join(SAVED_DIR, path.basename(filename))
   if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Datei nicht gefunden' })
+
+  const song = await findSongByFilename(path.basename(filename))
+  if (!song || !canModifySong(song, {
+    userId: auth.userId,
+    username: auth.username,
+    role: auth.role,
+  })) {
+    return res.status(403).json({ error: 'Forbidden' })
+  }
 
   const raw = fs.readFileSync(filepath, 'utf-8')
   const parsed = JSON.parse(raw)
@@ -38,6 +52,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   if (newFilename !== path.basename(filename)) {
     fs.unlinkSync(filepath)
   }
+
+  await upsertSongOwnership(newFilename, auth.userId)
 
   // Rename bewusst nicht im Change-Log erfassen,
   // damit der Log auf echte Song-Adds/Deletes fokussiert bleibt.

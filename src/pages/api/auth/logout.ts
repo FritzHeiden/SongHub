@@ -1,11 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import {
-  AUTH_COOKIE_NAME,
-  AUTH_ROLE_COOKIE_NAME,
-  AUTH_USER_COOKIE_NAME,
 } from '../../../lib/auth'
+import { AUTH_COOKIE_NAME } from '../../../lib/auth-constants'
+import { verifySessionToken } from '../../../lib/crypto'
+import { deleteSession } from '../../../lib/sessions'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -14,11 +14,17 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const isHttps =
     (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto) === 'https'
   const secure = isHttps ? '; Secure' : ''
-  res.setHeader('Set-Cookie', [
+
+  const token = req.cookies?.[AUTH_COOKIE_NAME]
+  const sessionId = verifySessionToken(token)
+  if (sessionId) {
+    await deleteSession(sessionId)
+  }
+
+  res.setHeader(
+    'Set-Cookie',
     `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
-    `${AUTH_ROLE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
-    `${AUTH_USER_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
-  ])
+  )
 
   return res.status(200).json({ success: true })
 }

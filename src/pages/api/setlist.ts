@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { getAuthFromRequest } from '../../lib/auth'
+import { getAuthFromRequestAsync } from '../../lib/auth'
 import { getClientIp, pushSetlistTrash } from '../../lib/audit'
 
 const SETLIST_FILE = path.join(process.cwd(), 'saved-tabs', 'setlists.json')
@@ -31,8 +31,12 @@ function saveSetlists(setlists: Setlist) {
   fs.writeFileSync(SETLIST_FILE, JSON.stringify(setlists, null, 2))
 }
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const auth = getAuthFromRequest(req)
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
   const actor = auth.username || 'unknown'
   const role = auth.role
   const ip = getClientIp(req)

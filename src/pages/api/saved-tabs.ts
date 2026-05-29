@@ -1,8 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
-import { getAuthFromRequest } from '../../lib/auth'
+import { getAuthFromRequestAsync } from '../../lib/auth'
 import { appendChangeLog, getClientIp, moveSongToTrash } from '../../lib/audit'
+import {
+  canAccessSong,
+  canModifySong,
+  findSongByFilename,
+  listAccessibleSongs,
+  migrateLegacySongs,
+  songFilePath,
+  upsertSongOwnership,
+} from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -10,8 +19,14 @@ if (!fs.existsSync(SAVED_DIR)) {
   fs.mkdirSync(SAVED_DIR, { recursive: true })
 }
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const auth = getAuthFromRequest(req)
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || !auth.userId) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  await migrateLegacySongs(auth.userId)
+
   const actor = auth.username || 'unknown'
   const role = auth.role
   const ip = getClientIp(req)
@@ -43,6 +58,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       ),
     )
 
+    await upsertSongOwnership(filename, auth.userId)
+
     // Nur echte Neuanlagen im Change-Log erfassen.
     if (!existedBefore) {
       appendChangeLog({
@@ -66,7 +83,16 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   } else if (req.method === 'GET') {
     // List all saved tabs
     const files = fs.readdirSync(SAVED_DIR).filter(f => f.endsWith('.ultimatetab.json'))
-    const tabs = files.map(filename => {
+    const accessibleSongs = await listAccessibleSongs({
+      userId: auth.userId,
+      username: auth.username,
+      role: auth.role,
+    })
+    const allowed = new Set(accessibleSongs.map((song) => song.filename))
+
+    const tabs = files
+      .filter((filename) => allowed.has(filename))
+      .map(filename => {
       try {
         const raw = fs.readFileSync(path.join(SAVED_DIR, filename), 'utf-8')
         const parsed = JSON.parse(raw)
@@ -96,6 +122,15 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     }
     const filepath = path.join(SAVED_DIR, path.basename(filename))
     if (fs.existsSync(filepath)) {
+      const song = await findSongByFilename(path.basename(filename))
+      if (!song || !canModifySong(song, {
+        userId: auth.userId,
+        username: auth.username,
+        role: auth.role,
+      })) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
+
       const trashEntry = moveSongToTrash({
         filePath: filepath,
         originalFilename: path.basename(filename),

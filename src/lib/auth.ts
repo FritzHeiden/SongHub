@@ -1,11 +1,10 @@
 import type { NextApiRequest } from 'next'
+import { verifySessionToken } from './crypto'
+import { getSession } from './sessions'
+import { findUserById } from './users'
+import { AUTH_COOKIE_NAME } from './auth-constants'
 
 export type UserRole = 'user' | 'admin'
-
-export const AUTH_COOKIE_NAME = 'songhub_auth'
-export const AUTH_COOKIE_VALUE = 'ok'
-export const AUTH_ROLE_COOKIE_NAME = 'songhub_role'
-export const AUTH_USER_COOKIE_NAME = 'songhub_user'
 
 export const LOGIN_USERNAME = process.env.SONGHUB_LOGIN_USERNAME ?? ''
 export const LOGIN_PASSWORD = process.env.SONGHUB_LOGIN_PASSWORD ?? ''
@@ -53,23 +52,47 @@ export const isValidCredentials = (username?: string, password?: string): boolea
   return resolveCredentials(username, password).valid
 }
 
-export const getAuthFromRequest = (req: NextApiRequest): {
+export const getAuthFromRequestAsync = async (req: NextApiRequest): Promise<{
   isAuthed: boolean
   role: UserRole
   username: string
-} => {
-  const authCookie = req.cookies?.[AUTH_COOKIE_NAME]
-  const roleCookie = req.cookies?.[AUTH_ROLE_COOKIE_NAME]
-  const userCookie = req.cookies?.[AUTH_USER_COOKIE_NAME]
+  userId: number | null
+}> => {
+  const token = req.cookies?.[AUTH_COOKIE_NAME]
+  const sessionId = verifySessionToken(token)
+  if (!sessionId) {
+    return {
+      isAuthed: false,
+      role: 'user',
+      username: '',
+      userId: null,
+    }
+  }
 
-  const isAuthed = authCookie === AUTH_COOKIE_VALUE
-  const role: UserRole = roleCookie === 'admin' ? 'admin' : 'user'
-  const username = userCookie || ''
+  const session = await getSession(sessionId)
+  if (!session) {
+    return {
+      isAuthed: false,
+      role: 'user',
+      username: '',
+      userId: null,
+    }
+  }
 
-  return { isAuthed, role, username }
-}
+  const user = await findUserById(session.user_id)
+  if (!user) {
+    return {
+      isAuthed: false,
+      role: 'user',
+      username: '',
+      userId: null,
+    }
+  }
 
-export const isAdminRequest = (req: NextApiRequest): boolean => {
-  const auth = getAuthFromRequest(req)
-  return auth.isAuthed && auth.role === 'admin'
+  return {
+    isAuthed: true,
+    role: user.role,
+    username: user.username,
+    userId: user.id,
+  }
 }

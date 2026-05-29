@@ -1,13 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { isAdminRequest } from '../../../lib/auth'
+import { getAuthFromRequestAsync } from '../../../lib/auth'
 import { readAccessLogs } from '../../../lib/audit'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  if (!isAdminRequest(req)) {
+  const auth = await getAuthFromRequestAsync(req)
+  if (!auth.isAuthed || auth.role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden' })
   }
 

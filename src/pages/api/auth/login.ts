@@ -1,14 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import {
-  AUTH_COOKIE_NAME,
-  AUTH_COOKIE_VALUE,
-  AUTH_ROLE_COOKIE_NAME,
-  AUTH_USER_COOKIE_NAME,
   resolveCredentials,
 } from '../../../lib/auth'
+import { AUTH_COOKIE_NAME } from '../../../lib/auth-constants'
 import { appendAccessLog, getClientIp } from '../../../lib/audit'
+import { ensureUser } from '../../../lib/users'
+import { createSession } from '../../../lib/sessions'
+import { createSessionToken } from '../../../lib/crypto'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
@@ -37,11 +37,11 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const secure = isHttps ? '; Secure' : ''
   const maxAge = 60 * 60 * 24 * 7
 
-  res.setHeader('Set-Cookie', [
-    `${AUTH_COOKIE_NAME}=${AUTH_COOKIE_VALUE}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`,
-    `${AUTH_ROLE_COOKIE_NAME}=${resolved.role}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`,
-    `${AUTH_USER_COOKIE_NAME}=${encodeURIComponent(resolved.username)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`,
-  ])
+  const user = await ensureUser(resolved.username, resolved.role)
+  const session = await createSession(user.id)
+  const token = createSessionToken(session.id)
+
+  res.setHeader('Set-Cookie', `${AUTH_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`)
 
   appendAccessLog({
     timestamp: new Date().toISOString(),
@@ -52,5 +52,5 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     event: 'login_success',
   })
 
-  return res.status(200).json({ success: true, role: resolved.role })
+  return res.status(200).json({ success: true, role: user.role })
 }

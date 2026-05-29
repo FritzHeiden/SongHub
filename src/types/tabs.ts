@@ -56,6 +56,18 @@ export interface Tab {
     A?: boolean
     F?: boolean
   }
+  songContext?: SongContext
+}
+
+export interface SongContext {
+  filename: string
+  ownershipMode: 'user' | 'group'
+  ownerType: 'user' | 'group'
+  ownerUserId: number | null
+  ownerUsername: string | null
+  ownerGroupId: number | null
+  ownerGroupName: string | null
+  userPermission: 'none' | 'viewer' | 'editor' | 'owner'
 }
 
 export interface TabScrapped {

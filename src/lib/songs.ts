@@ -58,6 +58,17 @@ export interface SongShareSummary {
   updated_at: string
 }
 
+export interface SongContextSummary {
+  filename: string
+  ownershipMode: 'user' | 'group'
+  ownerType: 'user' | 'group'
+  ownerUserId: number | null
+  ownerUsername: string | null
+  ownerGroupId: number | null
+  ownerGroupName: string | null
+  userPermission: 'none' | 'viewer' | 'editor' | 'owner'
+}
+
 function savedDir(): string {
   const dir = resolveSavedTabsDir()
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -109,6 +120,68 @@ async function findSongOwnershipByFilename(
     owner_group_id: null,
     created_at: song.created_at,
     updated_at: song.updated_at,
+  }
+}
+
+async function resolveSongContextSummary(
+  song: SongRecord,
+  actor: RequestActor,
+): Promise<SongContextSummary> {
+  const db = await getDb()
+  const ownership = await findSongOwnershipByFilename(song.filename)
+
+  let ownerUserId: number | null = null
+  let ownerUsername: string | null = null
+  let ownerGroupId: number | null = null
+  let ownerGroupName: string | null = null
+  let ownerType: 'user' | 'group' = 'user'
+
+  if (ownership) {
+    ownerType = ownership.owner_type
+    ownerUserId = ownership.owner_user_id
+    ownerGroupId = ownership.owner_group_id
+  } else {
+    ownerType = 'user'
+    ownerUserId = song.owner_user_id
+  }
+
+  if (ownerUserId) {
+    const ownerUser = await db.get<{ username: string }>(
+      `
+      SELECT username
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+      ownerUserId,
+    )
+    ownerUsername = ownerUser?.username || null
+  }
+
+  if (ownerGroupId) {
+    const ownerGroup = await db.get<{ name: string }>(
+      `
+      SELECT name
+      FROM groups
+      WHERE id = ?
+      LIMIT 1
+      `,
+      ownerGroupId,
+    )
+    ownerGroupName = ownerGroup?.name || null
+  }
+
+  const userPermission = await resolveSongPermission(song, actor)
+
+  return {
+    filename: song.filename,
+    ownershipMode: song.ownership_mode,
+    ownerType,
+    ownerUserId,
+    ownerUsername,
+    ownerGroupId,
+    ownerGroupName,
+    userPermission,
   }
 }
 
@@ -357,6 +430,15 @@ export async function assignSongToGroup(filename: string, groupId: number): Prom
     now,
     now,
   )
+}
+
+export async function getSongContextByFilename(
+  filename: string,
+  actor: RequestActor,
+): Promise<SongContextSummary | null> {
+  const song = await findSongByFilename(path.basename(filename))
+  if (!song) return null
+  return resolveSongContextSummary(song, actor)
 }
 
 export async function canAccessSong(song: SongRecord, actor: RequestActor): Promise<boolean> {

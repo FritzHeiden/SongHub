@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import fs from 'fs'
 import path from 'path'
 import { getAuthFromRequestAsync } from '../../lib/auth'
-import { canAccessSong, findSongByFilename } from '../../lib/songs'
+import { canAccessSong, findSongByFilename, getSongContextByFilename } from '../../lib/songs'
 
 const SAVED_DIR = path.join(process.cwd(), 'saved-tabs')
 
@@ -35,6 +35,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const content = fs.readFileSync(filepath, 'utf-8')
   const parsed = JSON.parse(content)
+  const songContext = await getSongContextByFilename(path.basename(filename), {
+    userId: auth.userId,
+    username: auth.username,
+    role: auth.role,
+  })
   
   // Copy metadata into tab object so it's available in the UI
   if (parsed.tab) {
@@ -44,6 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       A: Boolean(parsed?.marks?.A),
       F: Boolean(parsed?.marks?.F),
     }
+    parsed.tab.songContext = songContext
   }
   
   res.setHeader('Content-Type', 'application/json')

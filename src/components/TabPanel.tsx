@@ -3,6 +3,8 @@ import {
   Badge,
   Box,
   Button,
+  FormControl,
+  FormLabel,
   Flex,
   Icon,
   IconButton,
@@ -11,6 +13,7 @@ import {
   MenuItem,
   MenuList,
   Skeleton,
+  Select,
   Text,
   useBreakpointValue,
   useColorModeValue,
@@ -25,6 +28,7 @@ import { GiGuitarHead } from 'react-icons/gi'
 import { FaCircleArrowDown } from 'react-icons/fa6'
 import { GiMusicalScore } from 'react-icons/gi'
 import { GiCrowbar } from 'react-icons/gi'
+import { FiShare2 } from 'react-icons/fi'
 import Difficulty from './Difficulty'
 import ChordDiagram from './ChordDiagram'
 import { Tab, UGChordCollection } from '../types/tabs'
@@ -39,6 +43,7 @@ import FontSizeManager from './FontSizeManager'
 import TabActionButtons from './TabActionButtons'
 import TabSaveButton from './TabSaveButton'
 import SetlistAddButton from './SetlistAddButton'
+import type { SongContext } from '../types/tabs'
 
 interface TabPanelProps {
   selectedTab: Tab
@@ -96,6 +101,13 @@ export default function TabPanel({
   const [imageZoomIncreaseLocked, setImageZoomIncreaseLocked] = useState<boolean>(false)
   const [songMarks, setSongMarks] = useState<{ A: boolean; F: boolean }>({ A: false, F: false })
   const [musicianMarkingEnabled, setMusicianMarkingEnabled] = useState<boolean>(false)
+  const [songContext, setSongContext] = useState<SongContext | null>(null)
+  const [shareUsername, setShareUsername] = useState<string>('')
+  const [sharePermission, setSharePermission] = useState<'viewer' | 'editor'>('viewer')
+  const [groupTargetId, setGroupTargetId] = useState<string>('')
+  const [groups, setGroups] = useState<Array<{ id: number; name: string }>>([])
+  const [shares, setShares] = useState<Array<{ username: string; permission: 'viewer' | 'editor' }>>([])
+  const [isCollaborationOpen, setIsCollaborationOpen] = useState<boolean>(false)
   const [autoscrollSpeed, setAutoscrollSpeed] = useState<number>(10)
   const imageContainerRef = useRef<HTMLDivElement>(null)
   const contentContainerRef = useRef<HTMLDivElement>(null)
@@ -403,6 +415,49 @@ export default function TabPanel({
     })
   }, [selectedTabContent?.marks, selectedTabContent?.savedFilename])
 
+  useEffect(() => {
+    const filename = savedFilename
+    if (!filename) {
+      setSongContext(null)
+      setShares([])
+      setIsCollaborationOpen(false)
+      return
+    }
+
+    fetch(`/api/song-context?filename=${encodeURIComponent(filename)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.songContext) {
+          setSongContext(data.songContext)
+        } else {
+          setSongContext(null)
+        }
+      })
+      .catch(() => setSongContext(null))
+
+    fetch(`/api/song-shares?filename=${encodeURIComponent(filename)}`)
+      .then((r) => {
+        if (!r.ok) return { shares: [] }
+        return r.json()
+      })
+      .then((data) => {
+        setShares(Array.isArray(data?.shares) ? data.shares : [])
+      })
+      .catch(() => setShares([]))
+  }, [savedFilename])
+
+  useEffect(() => {
+    fetch('/api/groups')
+      .then((r) => {
+        if (!r.ok) return { groups: [] }
+        return r.json()
+      })
+      .then((data) => {
+        setGroups(Array.isArray(data?.groups) ? data.groups : [])
+      })
+      .catch(() => setGroups([]))
+  }, [])
+
   const toggleSongMark = async (mark: 'A' | 'F') => {
     if (!musicianMarkingEnabled || !savedFilename) return
 
@@ -428,6 +483,95 @@ export default function TabPanel({
         position: 'top-right',
       })
     }
+  }
+
+  const canManageCollaboration = songContext?.userPermission === 'owner'
+
+  const handleGrantShare = async () => {
+    if (!savedFilename || !shareUsername.trim()) return
+
+    const res = await fetch('/api/song-shares', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: savedFilename,
+        username: shareUsername.trim(),
+        permission: sharePermission,
+      }),
+    })
+
+    if (!res.ok) {
+      toast({
+        description: 'Freigabe konnte nicht gesetzt werden',
+        status: 'error',
+        duration: 1600,
+        position: 'top-right',
+      })
+      return
+    }
+
+    setShareUsername('')
+    const refreshed = await fetch(`/api/song-shares?filename=${encodeURIComponent(savedFilename)}`).then((r) => r.json()).catch(() => ({ shares: [] }))
+    setShares(Array.isArray(refreshed?.shares) ? refreshed.shares : [])
+    toast({
+      description: 'Freigabe gespeichert',
+      status: 'success',
+      duration: 1400,
+      position: 'top-right',
+    })
+  }
+
+  const handleRevokeShare = async (username: string) => {
+    if (!savedFilename) return
+    const res = await fetch(`/api/song-shares?filename=${encodeURIComponent(savedFilename)}&username=${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+    })
+
+    if (!res.ok) {
+      toast({
+        description: 'Freigabe konnte nicht entfernt werden',
+        status: 'error',
+        duration: 1600,
+        position: 'top-right',
+      })
+      return
+    }
+
+    setShares((prev) => prev.filter((entry) => entry.username !== username))
+    toast({
+      description: 'Freigabe entfernt',
+      status: 'info',
+      duration: 1400,
+      position: 'top-right',
+    })
+  }
+
+  const handleAssignToGroup = async () => {
+    if (!savedFilename || !groupTargetId) return
+    const res = await fetch('/api/song-ownership', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: savedFilename, groupId: Number(groupTargetId) }),
+    })
+
+    if (!res.ok) {
+      toast({
+        description: 'Konnte Song nicht der Gruppe zuweisen',
+        status: 'error',
+        duration: 1700,
+        position: 'top-right',
+      })
+      return
+    }
+
+    const refreshed = await fetch(`/api/song-context?filename=${encodeURIComponent(savedFilename)}`).then((r) => r.json()).catch(() => ({ songContext: null }))
+    setSongContext(refreshed?.songContext || null)
+    toast({
+      description: 'Song einer Gruppe zugewiesen',
+      status: 'success',
+      duration: 1500,
+      position: 'top-right',
+    })
   }
 
   return (
@@ -584,6 +728,21 @@ export default function TabPanel({
                   <Flex alignItems={'center'} gap={1} flexShrink={0}>
                     <SetlistAddButton tab={selectedTabContent} isLoading={isLoading} />
                     <TabSaveButton tab={selectedTabContent} isLoading={isLoading} />
+                    {savedFilename && songContext && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        boxShadow="md"
+                        fontWeight="normal"
+                        px="3"
+                        py="4"
+                        colorScheme="blue"
+                        onClick={() => setIsCollaborationOpen((prev) => !prev)}
+                        leftIcon={<Icon as={FiShare2} />}
+                      >
+                        Share
+                      </Button>
+                    )}
                   </Flex>
 
                   {musicianMarkingEnabled && savedFilename && (
@@ -641,6 +800,21 @@ export default function TabPanel({
                   <Flex alignItems={'center'} gap={1} flexShrink={0}>
                     <SetlistAddButton tab={selectedTabContent} isLoading={isLoading} />
                     <TabSaveButton tab={selectedTabContent} isLoading={isLoading} />
+                    {savedFilename && songContext && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        boxShadow="md"
+                        fontWeight="normal"
+                        px="3"
+                        py="4"
+                        colorScheme="blue"
+                        onClick={() => setIsCollaborationOpen((prev) => !prev)}
+                        leftIcon={<Icon as={FiShare2} />}
+                      >
+                        Share
+                      </Button>
+                    )}
                   </Flex>
                 </>
               )}
@@ -717,6 +891,66 @@ export default function TabPanel({
               toggleFullscreen={toggleFullscreen}
             />
           </Flex>
+
+          {savedFilename && songContext && isCollaborationOpen && (
+            <Box borderWidth="1px" borderRadius="md" p={3} mt={2}>
+              <Flex align="center" justify="space-between" flexWrap="wrap" gap={2}>
+                <Flex gap={2} align="center" flexWrap="wrap">
+                  <Badge colorScheme={songContext.ownershipMode === 'group' ? 'purple' : 'gray'}>
+                    {songContext.ownershipMode === 'group' ? `Group: ${songContext.ownerGroupName || 'Unknown'}` : `Owner: ${songContext.ownerUsername || 'Unknown'}`}
+                  </Badge>
+                  <Badge colorScheme="blue">Permission: {songContext.userPermission}</Badge>
+                </Flex>
+              </Flex>
+
+              {canManageCollaboration && (
+                <Flex mt={3} gap={3} flexWrap="wrap" align="end">
+                  <FormControl maxW="240px">
+                    <FormLabel fontSize="xs" mb={1}>Share with username</FormLabel>
+                    <Input size="sm" value={shareUsername} onChange={(e) => setShareUsername(e.target.value)} placeholder="username" />
+                  </FormControl>
+                  <FormControl maxW="160px">
+                    <FormLabel fontSize="xs" mb={1}>Permission</FormLabel>
+                    <Select size="sm" value={sharePermission} onChange={(e) => setSharePermission(e.target.value as 'viewer' | 'editor')}>
+                      <option value="viewer">viewer</option>
+                      <option value="editor">editor</option>
+                    </Select>
+                  </FormControl>
+                  <Button size="sm" colorScheme="blue" onClick={handleGrantShare}>Grant</Button>
+                </Flex>
+              )}
+
+              {canManageCollaboration && (
+                <Flex mt={3} gap={3} flexWrap="wrap" align="end">
+                  <FormControl maxW="280px">
+                    <FormLabel fontSize="xs" mb={1}>Assign to group</FormLabel>
+                    <Select size="sm" value={groupTargetId} onChange={(e) => setGroupTargetId(e.target.value)}>
+                      <option value="">Select group</option>
+                      {groups.map((group) => (
+                        <option key={group.id} value={String(group.id)}>{group.name}</option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Button size="sm" colorScheme="purple" onClick={handleAssignToGroup} isDisabled={!groupTargetId}>Transfer</Button>
+                </Flex>
+              )}
+
+              {shares.length > 0 && (
+                <Flex mt={3} gap={2} flexWrap="wrap" align="center">
+                  {shares.map((entry) => (
+                    <Badge key={`${entry.username}-${entry.permission}`} variant="subtle" colorScheme="teal" px={2} py={1}>
+                      <Flex align="center" gap={2}>
+                        <Text fontSize="xs">{entry.username}: {entry.permission}</Text>
+                        {canManageCollaboration && (
+                          <Button size="xs" variant="ghost" onClick={() => handleRevokeShare(entry.username)}>x</Button>
+                        )}
+                      </Flex>
+                    </Badge>
+                  ))}
+                </Flex>
+              )}
+            </Box>
+          )}
         </Skeleton>
       </Box>
 

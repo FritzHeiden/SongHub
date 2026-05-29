@@ -42,6 +42,11 @@ interface SavedTabMeta {
     A?: boolean
     F?: boolean
   }
+  songContext?: {
+    ownershipMode: 'user' | 'group'
+    ownerGroupName: string | null
+    userPermission: 'none' | 'viewer' | 'editor' | 'owner'
+  }
   error?: boolean
 }
 
@@ -261,6 +266,16 @@ export default function Home(): JSX.Element {
                               <Text fontSize="lg" fontWeight="bold" noOfLines={1}>
                                 {tab.name}
                               </Text>
+                              {tab.songContext?.ownershipMode === 'group' && (
+                                <Badge colorScheme="purple" variant="subtle">
+                                  Group{tab.songContext.ownerGroupName ? `: ${tab.songContext.ownerGroupName}` : ''}
+                                </Badge>
+                              )}
+                              {tab.songContext?.userPermission && tab.songContext.userPermission !== 'none' && (
+                                <Badge colorScheme="blue" variant="subtle">
+                                  {tab.songContext.userPermission}
+                                </Badge>
+                              )}
                               {musicianMarkingEnabled && tab.marks?.A && (
                                 <Badge colorScheme="green" variant="subtle">A</Badge>
                               )}

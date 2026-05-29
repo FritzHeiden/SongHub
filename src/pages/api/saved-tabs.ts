@@ -6,6 +6,7 @@ import { appendChangeLog, getClientIp, moveSongToTrash } from '../../lib/audit'
 import {
   canModifySong,
   findSongByFilename,
+  getSongContextByFilename,
   listAccessibleSongs,
   migrateLegacySongs,
   songFilePath,
@@ -89,12 +90,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
     const allowed = new Set(accessibleSongs.map((song) => song.filename))
 
-    const tabs = files
+    const tabs = await Promise.all(files
       .filter((filename) => allowed.has(filename))
-      .map(filename => {
+      .map(async (filename) => {
       try {
         const raw = fs.readFileSync(path.join(SAVED_DIR, filename), 'utf-8')
         const parsed = JSON.parse(raw)
+        const songContext = await getSongContextByFilename(filename, {
+          userId: auth.userId,
+          username: auth.username,
+          role: auth.role,
+        })
+
         return {
           filename,
           savedAt: parsed.savedAt,
@@ -107,11 +114,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             A: Boolean(parsed?.marks?.A),
             F: Boolean(parsed?.marks?.F),
           },
+          songContext,
         }
       } catch {
         return { filename, error: true }
       }
-    })
+    }))
+
     return res.status(200).json({ tabs })
 
   } else if (req.method === 'DELETE') {

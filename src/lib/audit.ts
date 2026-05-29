@@ -17,7 +17,16 @@ export interface ChangeLogEntry {
   username: string
   role: 'user' | 'admin'
   ip: string
-  action: 'song_created' | 'song_deleted' | 'song_renamed'
+  action:
+    | 'song_created'
+    | 'song_deleted'
+    | 'song_renamed'
+    | 'song_share_granted'
+    | 'song_share_revoked'
+    | 'group_created'
+    | 'group_membership_updated'
+    | 'group_membership_removed'
+    | 'song_owner_changed'
   details?: Record<string, any>
 }
 

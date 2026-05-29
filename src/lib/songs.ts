@@ -48,6 +48,16 @@ export interface RequestActor {
   role: UserRole
 }
 
+export interface SongShareSummary {
+  id: number
+  song_filename: string
+  user_id: number
+  permission: 'viewer' | 'editor'
+  username: string
+  created_at: string
+  updated_at: string
+}
+
 function savedDir(): string {
   const dir = resolveSavedTabsDir()
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
@@ -123,6 +133,13 @@ async function findSongShareGrant(
 }
 
 async function isUserInGroup(groupId: number, userId: number): Promise<boolean> {
+  return Boolean(await findGroupMembership(groupId, userId))
+}
+
+async function findGroupMembership(
+  groupId: number,
+  userId: number,
+): Promise<GroupMembershipRecord | null> {
   const db = await getDb()
   const membership = await db.get<GroupMembershipRecord>(
     `
@@ -135,7 +152,7 @@ async function isUserInGroup(groupId: number, userId: number): Promise<boolean> 
     userId,
   )
 
-  return Boolean(membership)
+  return membership || null
 }
 
 async function resolveSongPermission(
@@ -248,6 +265,21 @@ export async function revokeSongAccess(filename: string, userId: number): Promis
   )
 }
 
+export async function listSongShareGrants(filename: string): Promise<SongShareSummary[]> {
+  const db = await getDb()
+  const normalized = path.basename(filename)
+  return db.all<SongShareSummary[]>(
+    `
+    SELECT sg.id, sg.song_filename, sg.user_id, sg.permission, u.username, sg.created_at, sg.updated_at
+    FROM song_share_grants sg
+    INNER JOIN users u ON u.id = sg.user_id
+    WHERE sg.song_filename = ?
+    ORDER BY u.username COLLATE NOCASE ASC
+    `,
+    normalized,
+  ) as unknown as SongShareSummary[]
+}
+
 export async function upsertGroupMembership(params: {
   groupId: number
   userId: number
@@ -267,6 +299,61 @@ export async function upsertGroupMembership(params: {
     params.groupId,
     params.userId,
     params.role,
+    now,
+    now,
+  )
+}
+
+export async function isGroupManager(groupId: number, userId: number): Promise<boolean> {
+  const membership = await findGroupMembership(groupId, userId)
+  return membership?.role === 'manager'
+}
+
+export async function canManageSongShares(
+  song: SongRecord,
+  actor: RequestActor,
+): Promise<boolean> {
+  if (actor.role === 'admin') return true
+
+  const ownership = await findSongOwnershipByFilename(song.filename)
+  if (ownership?.owner_type === 'user') {
+    return ownership.owner_user_id === actor.userId
+  }
+
+  if (ownership?.owner_type === 'group' && ownership.owner_group_id) {
+    return isGroupManager(ownership.owner_group_id, actor.userId)
+  }
+
+  return false
+}
+
+export async function assignSongToGroup(filename: string, groupId: number): Promise<void> {
+  const db = await getDb()
+  const normalized = path.basename(filename)
+  const now = new Date().toISOString()
+
+  await db.run(
+    `
+    UPDATE songs
+    SET ownership_mode = 'group', updated_at = ?
+    WHERE filename = ?
+    `,
+    now,
+    normalized,
+  )
+
+  await db.run(
+    `
+    INSERT INTO song_ownerships (song_filename, owner_type, owner_user_id, owner_group_id, created_at, updated_at)
+    VALUES (?, 'group', NULL, ?, ?, ?)
+    ON CONFLICT(song_filename) DO UPDATE SET
+      owner_type = excluded.owner_type,
+      owner_user_id = excluded.owner_user_id,
+      owner_group_id = excluded.owner_group_id,
+      updated_at = excluded.updated_at
+    `,
+    normalized,
+    groupId,
     now,
     now,
   )
@@ -301,8 +388,8 @@ export async function listAccessibleSongs(actor: RequestActor): Promise<SongReco
     LEFT JOIN song_ownerships so ON so.song_filename = s.filename
     LEFT JOIN song_share_grants sg ON sg.song_filename = s.filename AND sg.user_id = ?
     LEFT JOIN group_memberships gm ON so.owner_type = 'group' AND so.owner_group_id = gm.group_id AND gm.user_id = ?
-    WHERE s.owner_user_id = ?
-      OR s.visibility = 'public'
+    WHERE s.visibility = 'public'
+      OR so.song_filename IS NULL AND s.owner_user_id = ?
       OR (so.owner_type = 'user' AND so.owner_user_id = ?)
       OR (so.owner_type = 'group' AND gm.id IS NOT NULL)
       OR sg.id IS NOT NULL
